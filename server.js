@@ -26,6 +26,9 @@
 // promptFunc("What is 2 plus 2?");
 
 const { OpenAI } = require("@langchain/openai");
+const { PromptTemplate } = require("@langchain/core/prompts");
+const { StructuredOutputParser } = require("langchain/output_parsers");
+
 require('dotenv').config();
 const express = require('express');
 const bodyParser = require('body-parser');
@@ -42,10 +45,44 @@ const model = new OpenAI({
   model: 'gpt-3.5-turbo'
 });
 
+const parser = StructuredOutputParser.fromNamesAndDescriptions({
+  code: "JavaScript code that answers the user's question",
+  explanation: "detailed explanation of the example code provided"
+});
+
+const formatInstructions = parser.getFormatInstructions();
+
+// Instantiation of a new object called "prompt" using the "PromptTemplate" class
+const prompt = new PromptTemplate({
+  template: "You are a programming expert and will answer the user’s coding questions as thoroughly as possible using JavaScript. If the question is unrelated to coding, do not answer.\n{format_instructions}\n{question}",
+  inputVariables: ["question"],
+  partialVariables: { format_instructions: formatInstructions }
+});
+
+// Instantiation of a new object called "prompt" using the "PromptTemplate" class
+// const prompt = new PromptTemplate({
+//   template: "You are a programming expert and will answer the user’s coding questions as thoroughly as possible using JavaScript. If the question is unrelated to coding, do not answer.\n{question}",
+//   inputVariables: ["question"]
+// });
+
 const promptFunc = async (input) => {
   try {
-    const res = await model.invoke(input);
-    return res;
+    // Format the prompt with the user input
+    const promptInput = await prompt.format({
+      question: input
+    });
+
+    // Call the model with the formatted prompt
+    const res = await model.invoke(promptInput);
+    
+    // For a non-coding question, the model returns an error message, causing parse() to throw an exception.
+    // In this case, simply return the error message instead of the parsed results.
+    try { 
+      const parsedResult = await parser.parse(res);
+      return parsedResult;
+    } catch (e) { 
+      return res;
+    }
   }
   catch (err) {
     console.error(err);
